@@ -1,5 +1,6 @@
 const express = require("express");
 const Acuity = require("./src/AcuityScheduling"); // acuity-js library
+const axios = require("axios"); // For Shopify API requests
 require("dotenv").config(); // Load environment variables from .env
 
 const app = express();
@@ -31,34 +32,73 @@ app.get("/availability", (req, res) => {
   );
 });
 
-// Endpoint: Create Appointment
-app.post("/book", (req, res) => {
-  const { firstName, lastName, email, datetime, appointmentTypeID } = req.body;
+// Endpoint: Create Appointment and Sync with Shopify
+app.post("/book", async (req, res) => {
+  const { firstName, lastName, email, datetime, appointmentTypeID, serviceType } = req.body;
 
   if (!firstName || !lastName || !email || !datetime || !appointmentTypeID) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
-  acuity.request(
-    {
-      method: "POST",
-      path: "/appointments",
-      body: {
-        firstName,
-        lastName,
-        email,
-        datetime,
-        appointmentTypeID,
+  try {
+    // Step 1: Create the appointment in Acuity
+    const acuityResponse = await new Promise((resolve, reject) => {
+      acuity.request(
+        {
+          method: "POST",
+          path: "/appointments",
+          body: {
+            firstName,
+            lastName,
+            email,
+            datetime,
+            appointmentTypeID,
+          },
+        },
+        (err, _, appointment) => {
+          if (err) reject(err);
+          else resolve(appointment);
+        }
+      );
+    });
+
+    console.log("Appointment created in Acuity:", acuityResponse);
+
+    // Step 2: Sync the booking with Shopify cart
+    const shopifyCartResponse = await axios.post(
+      "https://skyngroup.myshopify.com/cart/add.js",
+      {
+        items: [
+          {
+            id: "9453377356041", // Shopify Product Variant ID
+            quantity: 1,
+            properties: {
+              "Appointment Date": datetime,
+              "Service Type": serviceType,
+              "Client Name": `${firstName} ${lastName}`,
+            },
+          },
+        ],
       },
-    },
-    (err, _, appointment) => {
-      if (err) {
-        console.error("Error creating appointment:", err);
-        return res.status(500).json({ error: "Failed to create appointment" });
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
       }
-      res.json(appointment);
-    }
-  );
+    );
+
+    console.log("Booking synced with Shopify cart:", shopifyCartResponse.data);
+
+    // Respond with both Acuity and Shopify data
+    res.status(201).json({
+      message: "Appointment successfully created and synced with Shopify.",
+      acuity: acuityResponse,
+      shopify: shopifyCartResponse.data,
+    });
+  } catch (error) {
+    console.error("Error creating appointment or syncing with Shopify:", error);
+    res.status(500).json({ error: "Failed to create appointment or sync with Shopify." });
+  }
 });
 
 // Start the server
