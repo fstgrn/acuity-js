@@ -1,40 +1,74 @@
 const express = require("express");
 const Acuity = require("./src/AcuityScheduling"); // acuity-js library
-require("dotenv").config(); // Load environment variables
+require("dotenv").config(); // Load environment variables from .env
 
 const app = express();
 app.use(express.json()); // Middleware to parse JSON
 
-// Acuity API configuration
-const acuity = new Acuity({
-  userId: process.env.ACUITY_USER_ID, // Acuity user ID
-  apiKey: process.env.ACUITY_API_KEY, // Acuity API key
+// CORS Middleware
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  next();
 });
 
-// Endpoint: Fetch Services (includes prices)
-app.get("/services", async (req, res) => {
-  try {
-    acuity.request("/appointment-types", (err, _, appointmentTypes) => {
-      if (err) {
-        console.error("Error fetching services from Acuity:", err);
-        return res.status(500).json({ error: "Failed to load services" });
-      }
+// Acuity API configuration
+const acuity = new Acuity({
+  userId: process.env.ACUITY_USER_ID, // Acuity user ID from environment variables
+  apiKey: process.env.ACUITY_API_KEY, // Acuity API key from environment variables
+});
 
-      // Map the appointment types to include only relevant data
-      const services = appointmentTypes.map((type) => ({
-        id: type.id,
-        name: type.name,
-        description: type.description,
-        price: type.price, // Assuming Acuity provides a `price` field
-      }));
+// Endpoint: Fetch Services
+app.get("/services", (req, res) => {
+  acuity.request("/appointment-types", (err, _, appointmentTypes) => {
+    if (err) {
+      console.error("Error fetching services from Acuity:", err);
+      return res.status(500).json({ error: "Failed to load services" });
+    }
+    if (!appointmentTypes || appointmentTypes.length === 0) {
+      return res.status(404).json({ error: "No services found" });
+    }
+    const services = appointmentTypes.map((type) => ({
+      id: type.id,
+      name: type.name,
+      description: type.description,
+      price: type.price,
+    }));
+    res.json(services);
+  });
+});
 
-      console.log("Services fetched successfully:", services);
-      res.json(services);
-    });
-  } catch (error) {
-    console.error("Unexpected error in /services endpoint:", error);
-    res.status(500).json({ error: "Internal server error" });
+// Endpoint: Book Appointment
+app.post("/book", (req, res) => {
+  const { firstName, lastName, email, datetime, appointmentTypeID } = req.body;
+
+  // Validate required fields
+  if (!firstName || !lastName || !email || !datetime || !appointmentTypeID) {
+    return res.status(400).json({ error: "Missing required fields" });
   }
+
+  // Create appointment on Acuity
+  acuity.request(
+    {
+      method: "POST",
+      path: "/appointments",
+      body: {
+        firstName,
+        lastName,
+        email,
+        datetime,
+        appointmentTypeID,
+      },
+    },
+    (err, _, appointment) => {
+      if (err) {
+        console.error("Error creating appointment:", err);
+        return res.status(500).json({ error: "Failed to create appointment" });
+      }
+      res.json(appointment);
+    }
+  );
 });
 
 // Start the server
