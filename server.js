@@ -7,27 +7,27 @@ app.use(express.json()); // Middleware to parse JSON
 
 // Acuity API configuration
 const acuity = new Acuity({
-  userId: process.env.ACUITY_USER_ID, // Acuity user ID from .env
-  apiKey: process.env.ACUITY_API_KEY, // Acuity API key from .env
+  userId: process.env.ACUITY_USER_ID, // Acuity user ID from environment
+  apiKey: process.env.ACUITY_API_KEY, // Acuity API key from environment
 });
 
-// Endpoint: Fetch Appointment Types (Services)
-app.get("/appointment-types", (req, res) => {
-  acuity.request("/appointment-types", (err, _, appointmentTypes) => {
+// Endpoint: Fetch Services (appointment types)
+app.get("/services", (req, res) => {
+  acuity.request("/appointment-types", (err, _, services) => {
     if (err) {
-      console.error("Error fetching appointment types:", err);
-      return res.status(500).json({ error: "Failed to fetch appointment types" });
+      console.error("Error fetching services:", err);
+      return res.status(500).json({ error: "Failed to fetch services" });
     }
-    res.json(appointmentTypes); // Return the list of services
+    res.json(services);
   });
 });
 
-// Endpoint: Fetch Availability for a Service
+// Endpoint: Fetch Availability for a service
 app.get("/availability", (req, res) => {
   const { appointmentTypeID, date } = req.query;
 
   if (!appointmentTypeID || !date) {
-    return res.status(400).json({ error: "Missing required parameters: appointmentTypeID or date" });
+    return res.status(400).json({ error: "Missing required parameters" });
   }
 
   acuity.request(
@@ -37,12 +37,12 @@ app.get("/availability", (req, res) => {
         console.error("Error fetching availability:", err);
         return res.status(500).json({ error: "Failed to fetch availability" });
       }
-      res.json(availability); // Return the list of available time slots
+      res.json(availability);
     }
   );
 });
 
-// Endpoint: Create Appointment
+// Endpoint: Create Appointment (book a service)
 app.post("/book", (req, res) => {
   const { firstName, lastName, email, datetime, appointmentTypeID } = req.body;
 
@@ -67,9 +67,14 @@ app.post("/book", (req, res) => {
         console.error("Error creating appointment:", err);
         return res.status(500).json({ error: "Failed to create appointment" });
       }
-      res.json(appointment); // Return the appointment details
+      res.json(appointment);
     }
   );
+});
+
+// Test endpoint to verify the server is running
+app.get("/", (req, res) => {
+  res.send("Acuity Scheduling API Server is running!");
 });
 
 // Start the server
